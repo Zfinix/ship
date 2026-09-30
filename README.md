@@ -12,11 +12,11 @@ commits without asking.
 ## Install
 
 ```sh
-cargo install --path .
+cargo install --git https://github.com/Zfinix/ship
 ```
 
-ship is built on [kiln](https://github.com/Zfinix/kiln), which it reads from
-`../kiln`, so clone kiln next to this repository first.
+You need Rust 1.88 or newer. ship is built on
+[kiln](https://github.com/Zfinix/kiln), which Cargo fetches for you.
 
 ## Usage
 
