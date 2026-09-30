@@ -6,6 +6,12 @@ use std::fmt;
 /// Longest first line ship will write.
 pub const HEADER_LIMIT: usize = 72;
 
+/// Folders that hold packages rather than name one, so a scope is read from
+/// the folder under them instead.
+const CONTAINERS: [&str; 9] = [
+    "crates", "packages", "apps", "libs", "src", "lib", "cmd", "internal", "pkg",
+];
+
 /// The kind of change, as the first word of a conventional commit.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CommitType {
@@ -166,6 +172,39 @@ pub fn normalize_summary(summary: &str) -> String {
         (false, Some(first)) => first.to_lowercase().chain(chars).collect(),
         (true, _) | (false, None) => summary.to_string(),
     }
+}
+
+/// The folder most of `paths` live under, as a scope: the first folder that
+/// is not a container like `crates/` or `src/`, with a crate prefix such as
+/// `aster-` dropped. Ties go to the one seen first.
+pub fn suggest_scope<'a>(paths: impl IntoIterator<Item = &'a str>) -> Option<String> {
+    let mut counts: Vec<(String, usize)> = Vec::new();
+    for path in paths {
+        let path = path.rsplit(" => ").next().unwrap_or(path);
+        let mut dirs: Vec<&str> = path.split('/').collect();
+        dirs.pop();
+        let mut contained = false;
+        let Some(dir) = dirs.into_iter().find(|dir| {
+            let container = CONTAINERS.contains(dir);
+            contained |= container;
+            !container && !dir.starts_with('.') && !dir.contains(['{', '}'])
+        }) else {
+            continue;
+        };
+        let name = match contained {
+            true => dir.rsplit('-').next().unwrap_or(dir),
+            false => dir,
+        };
+        match counts.iter_mut().find(|(seen, _)| seen == name) {
+            Some((_, count)) => *count += 1,
+            None => counts.push((name.to_string(), 1)),
+        }
+    }
+    let best = counts.iter().map(|(_, count)| *count).max()?;
+    counts
+        .into_iter()
+        .find(|(_, count)| *count == best)
+        .map(|(name, _)| name)
 }
 
 /// `{"hash":…,"message":…}` for `--json`; `hash` is `null` on a dry run.

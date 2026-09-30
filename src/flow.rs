@@ -4,8 +4,9 @@
 use std::fmt;
 
 use anyhow::Result;
-use crossterm::event::{KeyCode, KeyModifiers};
-use ratatui::layout::Position;
+use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::buffer::Buffer;
+use ratatui::layout::{Position, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line, Span};
 use tokio::sync::mpsc;
@@ -22,7 +23,7 @@ use kiln::{text, theme};
 
 use crate::git;
 use crate::message::{
-    Breaking, CommitType, Message, normalize_scope, normalize_summary, summary_limit,
+    Breaking, CommitType, Message, normalize_scope, normalize_summary, suggest_scope, summary_limit,
 };
 
 const MAX_FILES: usize = 8;
@@ -36,7 +37,11 @@ const CONFIRM_KEYS: [Binding; 4] = [
     ("esc", "cancel"),
 ];
 const INPUT_KEYS: [Binding; 2] = [("enter", "next"), ("esc", "cancel")];
-const SCOPE_KEYS: [Binding; 2] = [("enter", "next, empty for none"), ("esc", "cancel")];
+const SCOPE_KEYS: [Binding; 3] = [
+    ("tab", "use suggestion"),
+    ("enter", "next, empty for none"),
+    ("esc", "cancel"),
+];
 
 /// Answers already given on the command line; those steps are skipped.
 pub struct Preset {
@@ -152,10 +157,15 @@ pub async fn run(preset: Preset, finish: Finish) -> Result<Outcome> {
     let scope = match preset.scope {
         Some(scope) => scope,
         None => {
-            let mut input = Input::new(PROMPT).limit(SCOPE_LIMIT);
+            let suggestion = suggest_scope(files.iter().map(|f| f.path.as_str()));
+            let mut field = ScopeField::new(suggestion.clone().unwrap_or_default());
+            let keys: &[Binding] = match suggestion {
+                Some(_) => &SCOPE_KEYS,
+                None => &SCOPE_KEYS[1..],
+            };
             let question = question("Scope, the part of the project it touches (optional)");
-            ask(&mut tui, &mut input, question, &SCOPE_KEYS).await?;
-            input.text().to_string()
+            ask(&mut tui, &mut field, question, keys).await?;
+            field.input.text().to_string()
         }
     };
     let scope = normalize_scope(&scope);
@@ -280,4 +290,53 @@ fn answered(label: &str, value: &str) -> Vec<Line<'static>> {
         Span::styled(format!("{label:<9}"), t.dim_style()),
         Span::styled(value.to_string(), t.text_style()),
     ])]
+}
+
+/// The scope input, where tab on an empty field fills in the suggestion.
+struct ScopeField {
+    input: Input,
+    suggestion: String,
+}
+
+impl ScopeField {
+    fn new(suggestion: String) -> Self {
+        Self {
+            input: Input::new(PROMPT)
+                .placeholder(suggestion.clone())
+                .limit(SCOPE_LIMIT),
+            suggestion,
+        }
+    }
+}
+
+impl Renderable for ScopeField {
+    fn render(&self, area: Rect, buf: &mut Buffer) {
+        self.input.render(area, buf);
+    }
+    fn desired_height(&self, width: u16) -> u16 {
+        self.input.desired_height(width)
+    }
+    fn cursor_pos(&self, area: Rect) -> Option<(u16, u16)> {
+        self.input.cursor_pos(area)
+    }
+}
+
+impl View for ScopeField {
+    fn handle_key(&mut self, key: KeyEvent) {
+        if key.code == KeyCode::Tab && self.input.text().is_empty() {
+            self.input = Input::new(PROMPT)
+                .limit(SCOPE_LIMIT)
+                .value(self.suggestion.clone());
+            return;
+        }
+        self.input.handle_key(key);
+    }
+
+    fn is_complete(&self) -> bool {
+        self.input.is_complete()
+    }
+
+    fn handle_paste(&mut self, text: String) -> bool {
+        self.input.handle_paste(text)
+    }
 }

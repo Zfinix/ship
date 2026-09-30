@@ -102,6 +102,43 @@ fn summary_limit_leaves_room_for_prefix_and_bang() {
 }
 
 #[test]
+fn scope_suggests_common_dir() {
+    let paths = ["docs/a.md", "tui/app.rs", "tui/view.rs", "README.md"];
+    assert_eq!(suggest_scope(paths), Some("tui".to_string()));
+}
+
+#[test]
+fn scope_skips_containers_and_crate_prefix() {
+    let paths = [
+        "crates/aster-cli/src/main.rs",
+        "crates/aster-cli/src/chat.rs",
+        "crates/aster-mcp/src/lib.rs",
+    ];
+    assert_eq!(suggest_scope(paths), Some("cli".to_string()));
+}
+
+#[test]
+fn scope_reads_under_src() {
+    assert_eq!(
+        suggest_scope(["src/tui/app.rs", "src/lib.rs"]),
+        Some("tui".to_string())
+    );
+}
+
+#[test]
+fn scope_follows_renames() {
+    assert_eq!(
+        suggest_scope(["old/a.rs => web/a.rs"]),
+        Some("web".to_string())
+    );
+}
+
+#[test]
+fn scope_is_none_for_root_files() {
+    assert_eq!(suggest_scope(["README.md", "src/main.rs"]), None);
+}
+
+#[test]
 fn scope_normalize_joins_words() {
     assert_eq!(normalize_scope(" the cli "), Some("the-cli".to_string()));
     assert_eq!(normalize_scope(""), None);
