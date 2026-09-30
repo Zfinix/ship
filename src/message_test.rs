@@ -93,6 +93,15 @@ fn summary_collapses_whitespace() {
 }
 
 #[test]
+fn summary_limit_leaves_room_for_prefix_and_bang() {
+    assert_eq!(summary_limit(CommitType::Feat, None), 72 - "feat!: ".len());
+    assert_eq!(
+        summary_limit(CommitType::Refactor, Some("cli")),
+        72 - "refactor(cli)!: ".len()
+    );
+}
+
+#[test]
 fn scope_normalize_joins_words() {
     assert_eq!(normalize_scope(" the cli "), Some("the-cli".to_string()));
     assert_eq!(normalize_scope(""), None);

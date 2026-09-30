@@ -19,6 +19,14 @@ impl fmt::Display for GitError {
 
 impl std::error::Error for GitError {}
 
+/// One staged file and its line counts. Binary files count as zero.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StagedFile {
+    pub path: String,
+    pub added: u64,
+    pub removed: u64,
+}
+
 /// Run git with `args`, returning stdout, or a [`GitError`] carrying
 /// `sentence` and git's stderr.
 fn git(args: &[&str], sentence: &str) -> Result<String, GitError> {
@@ -50,13 +58,13 @@ pub fn in_repo() -> bool {
     git(&["rev-parse", "--is-inside-work-tree"], "").is_ok_and(|out| out.trim() == "true")
 }
 
-/// The paths `git diff --cached` would commit.
-pub fn staged() -> Result<Vec<String>, GitError> {
+/// What `git diff --cached` would commit, one entry per file.
+pub fn staged() -> Result<Vec<StagedFile>, GitError> {
     let out = git(
-        &["diff", "--cached", "--name-only"],
+        &["diff", "--cached", "--numstat"],
         "Could not read the staged changes. Check the git output below and try again.",
     )?;
-    Ok(out.lines().map(str::to_string).collect())
+    Ok(parse_numstat(&out))
 }
 
 /// Stage every change in the work tree, like `git add -A`.
@@ -80,3 +88,24 @@ pub fn commit(message: &str) -> Result<String, GitError> {
     )?;
     Ok(hash.trim().to_string())
 }
+
+/// Parse `git diff --numstat` rows: `added<TAB>removed<TAB>path`.
+pub fn parse_numstat(out: &str) -> Vec<StagedFile> {
+    out.lines()
+        .filter_map(|row| {
+            let mut fields = row.splitn(3, '\t');
+            let added = fields.next()?;
+            let removed = fields.next()?;
+            let path = fields.next()?;
+            Some(StagedFile {
+                path: path.to_string(),
+                added: added.parse().unwrap_or(0),
+                removed: removed.parse().unwrap_or(0),
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+#[path = "git_test.rs"]
+mod tests;

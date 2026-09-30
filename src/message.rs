@@ -55,6 +55,23 @@ impl CommitType {
         }
     }
 
+    /// One plain line saying when to pick it.
+    pub fn description(self) -> &'static str {
+        match self {
+            CommitType::Feat => "something new people can use",
+            CommitType::Fix => "a bug fix",
+            CommitType::Docs => "only documentation changed",
+            CommitType::Refactor => "code moved or reshaped, same behaviour",
+            CommitType::Perf => "the same thing, faster or lighter",
+            CommitType::Test => "adding or fixing tests",
+            CommitType::Build => "the build, dependencies or packaging",
+            CommitType::Ci => "the CI setup and scripts",
+            CommitType::Chore => "housekeeping that fits nowhere else",
+            CommitType::Style => "formatting only, no code changes",
+            CommitType::Revert => "undoing an earlier commit",
+        }
+    }
+
     /// The type called `name`, ignoring case.
     pub fn parse(name: &str) -> Option<CommitType> {
         let name = name.trim().to_ascii_lowercase();
@@ -118,6 +135,14 @@ impl fmt::Display for Message {
         }
         write!(f, ": {}", self.summary)
     }
+}
+
+/// Characters left for the summary after `type(scope)!: `. Room for the `!`
+/// is always kept, since the breaking question comes after the summary.
+pub fn summary_limit(kind: CommitType, scope: Option<&str>) -> usize {
+    let scope = scope.map_or(0, |s| s.chars().count() + 2);
+    let prefix = kind.name().len() + scope + "!: ".len();
+    HEADER_LIMIT.saturating_sub(prefix)
 }
 
 /// A scope trimmed, with inner spaces turned into dashes. `None` when empty.
