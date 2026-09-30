@@ -7,7 +7,7 @@ step at a time: type, scope, summary, and whether it breaks anything. Every
 answer stays in your scrollback. Pass flags or pipe the summary in and it
 commits without asking.
 
-![ship at the summary step, with the staged files, the chosen type and the suggested scope above the prompt](assets/demo.png)
+![ship at the summary step, with the staged files, the chosen type and the suggested scope above the prompt](assets/demo.gif)
 
 ## Install
 
