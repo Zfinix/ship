@@ -1,15 +1,16 @@
-//! ship: conventional commits in your terminal. Pass the type and summary as
-//! flags and it commits what is staged with a conventional message.
+//! ship: conventional commits in your terminal. Pass the type as a flag and
+//! the summary as a flag or on stdin, and it commits what is staged.
 
 mod git;
 mod message;
 
+use std::io::{self, IsTerminal, Read};
 use std::process::ExitCode;
 
 use anyhow::{Result, bail};
 
 use git::GitError;
-use message::{Breaking, CommitType, Message};
+use message::{Breaking, CommitType, Message, to_json};
 
 const NOTHING_STAGED: &str = "Nothing is staged. Stage files with git add, or run ship --all.";
 const MAX_GIT_LINES: usize = 6;
@@ -22,10 +23,12 @@ Options:
   -t, --type <type>       feat, fix, docs, refactor, perf, test, build, ci,
                           chore, style or revert
   -s, --scope <scope>     the part of the project it touches
-  -m, --message <text>    the summary
+  -m, --message <text>    the summary; read from stdin when piped
       --breaking          mark the change as breaking with !
       --all               stage every change first
       --dry-run           print the message instead of committing
+  -q, --quiet             print only errors
+      --json              print {\"hash\",\"message\"} after committing
   -h, --help              show this help
   -V, --version           show the version";
 
@@ -36,6 +39,14 @@ enum Finish {
     Commit,
     /// Print the message and stop.
     DryRun,
+}
+
+/// How much ship says once it is done.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Output {
+    Normal,
+    Quiet,
+    Json,
 }
 
 fn main() -> ExitCode {
@@ -58,6 +69,7 @@ fn run() -> Result<()> {
     let mut breaking = Breaking::No;
     let mut finish = Finish::Commit;
     let mut stage_first = false;
+    let mut output = Output::Normal;
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut rest = args.iter();
@@ -79,6 +91,8 @@ fn run() -> Result<()> {
             "--breaking" => breaking = Breaking::Yes,
             "--all" => stage_first = true,
             "--dry-run" => finish = Finish::DryRun,
+            "-q" | "--quiet" => output = Output::Quiet,
+            "--json" => output = Output::Json,
             "-h" | "--help" => {
                 println!("{HELP}");
                 return Ok(());
@@ -98,8 +112,17 @@ fn run() -> Result<()> {
         git::stage_all()?;
     }
 
+    if summary.is_none() && !io::stdin().is_terminal() {
+        let mut piped = String::new();
+        io::stdin().read_to_string(&mut piped)?;
+        let piped = piped.trim();
+        if !piped.is_empty() {
+            summary = Some(piped.to_string());
+        }
+    }
+
     let (Some(kind), Some(summary)) = (kind, summary) else {
-        bail!("ship needs --type and --message. Run ship --help to see an example.");
+        bail!("ship needs --type and a summary. Pass --message or pipe the summary in.");
     };
     let message =
         Message::new(kind, scope.as_deref(), &summary, breaking).map_err(anyhow::Error::msg)?;
@@ -108,12 +131,15 @@ fn run() -> Result<()> {
     }
 
     let message = message.to_string();
-    match finish {
-        Finish::DryRun => println!("{message}"),
-        Finish::Commit => {
-            let hash = git::commit(&message)?;
-            println!("✓ Committed {hash} {message}");
-        }
+    let hash = match finish {
+        Finish::Commit => Some(git::commit(&message)?),
+        Finish::DryRun => None,
+    };
+    match (output, hash) {
+        (Output::Quiet, _) => {}
+        (Output::Json, hash) => println!("{}", to_json(hash.as_deref(), &message)),
+        (Output::Normal, None) => println!("{message}"),
+        (Output::Normal, Some(hash)) => println!("✓ Committed {hash} {message}"),
     }
     Ok(())
 }

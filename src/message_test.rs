@@ -103,3 +103,19 @@ fn type_parse_ignores_case() {
     assert_eq!(CommitType::parse("FEAT"), Some(CommitType::Feat));
     assert_eq!(CommitType::parse("feature"), None);
 }
+
+#[test]
+fn json_escapes_quotes() {
+    assert_eq!(
+        to_json(Some("abc1234"), "fix: say \"hi\""),
+        r#"{"hash":"abc1234","message":"fix: say \"hi\""}"#
+    );
+}
+
+#[test]
+fn json_dry_run_has_null_hash() {
+    assert_eq!(
+        to_json(None, "docs: tidy"),
+        r#"{"hash":null,"message":"docs: tidy"}"#
+    );
+}

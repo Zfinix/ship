@@ -143,6 +143,28 @@ pub fn normalize_summary(summary: &str) -> String {
     }
 }
 
+/// `{"hash":…,"message":…}` for `--json`; `hash` is `null` on a dry run.
+pub fn to_json(hash: Option<&str>, message: &str) -> String {
+    let quote = |text: &str| {
+        let mut out = String::from("\"");
+        for c in text.chars() {
+            match c {
+                '"' => out.push_str("\\\""),
+                '\\' => out.push_str("\\\\"),
+                '\n' => out.push_str("\\n"),
+                '\t' => out.push_str("\\t"),
+                '\r' => out.push_str("\\r"),
+                c if c.is_control() => out.push_str(&format!("\\u{:04x}", c as u32)),
+                c => out.push(c),
+            }
+        }
+        out.push('"');
+        out
+    };
+    let hash = hash.map_or_else(|| "null".to_string(), quote);
+    format!("{{\"hash\":{hash},\"message\":{}}}", quote(message))
+}
+
 #[cfg(test)]
 #[path = "message_test.rs"]
 mod tests;
